@@ -5,20 +5,17 @@ import sys
 import aqi
 
 try:
-    print "SQL CONNECTION"
+    print("SQL CONNECTION")
     conn = pymysql.connect(host=db_config[0], user=db_config[1], passwd=db_config[2], db=db_config[3],
                            connect_timeout=10)
 except:
-    print "Unable to connect to db"
+    print("Unable to connect to db")
     sys.exit()
 
 cur = conn.cursor()
 
 
 def get_reading(monitor):
-
-    print " "
-    print "Monitor ID: ", monitor
 
     sql = """
         SELECT
@@ -34,32 +31,41 @@ def get_reading(monitor):
             aq1.record_id + 1 = aq2.record_id
         WHERE
             aq1.ID = %s
-        AND
-            aq1.AQI IS NULL
+            AND aq1.AQI IS NULL
+            AND aq1.recorded_at - aq1.lastseen < 1000; 
         """
 
     cur.execute(sql, monitor)
     conn.commit()
-
     response = cur.fetchall()
-    print response[0][1]
 
+    print("Processing ", len(response), " readings")
     sql2 = """
         UPDATE
             air_quality aq
         SET
-            AQI = %s
+            AQI = %(aqi)s
         WHERE
-            ( aq.record_id = %s OR aq.record_id = %s + 1)
+            aq.record_id = %(record_id)s 
+            OR aq.record_id = %(record_id)s + 1
     """
+    updates = []
 
     for r in response:
 
         myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, r[0], algo=aqi.ALGO_EPA)
-        cur.execute(sql2, (myaqi, r[3], r[3]))
+        update = {
+            "aqi": myaqi,
+            "record_id": r[3]
+        }
+        print(update)
+        updates.append(update)
+        cur.execute(sql2, update)
         conn.commit()
 
-        print "Time: ", r[2], "AQI: ", myaqi
+    # print("Updating values")
+    # cur.executemany(sql2, updates)
+    # conn.commit()
 
 
 def get_monitors():
@@ -70,7 +76,7 @@ def get_monitors():
         FROM
             air_monitors
         WHERE
-            right(label,2) != " B"
+            channel = "A"
     """
 
     cur.execute(sql)
@@ -83,10 +89,8 @@ def handler():
     monitors = get_monitors()
 
     for m in monitors:
-
+        print("Processing monitor: ", m)
         get_reading(m[0])
 
-    # myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, '12', algo=aqi.ALGO_EPA)
-    # print myaqi
 
 handler()

@@ -1,9 +1,10 @@
 from config import db_config
 import requests
 import json
-import pprint
 import pymysql
 import sys
+import aqi
+from datetime import datetime
 
 
 try:
@@ -39,7 +40,7 @@ def get_monitors():
         FROM
             air_monitors
         WHERE
-            right(label,2) != " B"
+            channel = "A"
     """
 
     cur.execute(sql)
@@ -54,7 +55,7 @@ def insert_reading(reading):
             air_quality(recorded_at, AGE, DEVICE_BRIGHTNESS, DEVICE_LOCATIONTYPE, \
                         Hidden, ID, Label, LastSeen, LastUpdateCheck, Lat, Lon, PM2_5Value, RSSI, Stats, \
                         THINGSPEAK_PRIMARY_ID, THINGSPEAK_PRIMARY_ID_READ_KEY, THINGSPEAK_SECONDARY_ID, THINGSPEAK_SECONDARY_ID_READ_KEY, \
-                        Type, Uptime, Version, humidity, is_owner, pressure, temp_f, current_pm_2_5, 10_min_avg, 30_min_avg, 60_min_avg, 6_hr_avg, 24_hr_avg, 1_wk_avg)
+                        Type, Uptime, Version, humidity, is_owner, pressure, temp_f, aqi, current_pm_2_5, 10_min_avg, 30_min_avg, 60_min_avg, 6_hr_avg, 24_hr_avg, 1_wk_avg)
         VALUES(
             UNIX_TIMESTAMP(NOW()),
             %(AGE)s,
@@ -81,6 +82,7 @@ def insert_reading(reading):
             %(isOwner)s,
             %(pressure)s,
             %(temp_f)s,
+            %(aqi)s,
             %(v)s,
             %(v1)s,
             %(v2)s,
@@ -95,7 +97,7 @@ def insert_reading(reading):
             INSERT INTO
                 air_quality(recorded_at, AGE, Hidden, ID, Label, LastSeen, Lat, Lon, PM2_5Value, ParentID, Stats, \
                             THINGSPEAK_PRIMARY_ID, THINGSPEAK_PRIMARY_ID_READ_KEY, THINGSPEAK_SECONDARY_ID, THINGSPEAK_SECONDARY_ID_READ_KEY, \
-                            is_owner, current_pm_2_5, 10_min_avg, 30_min_avg, 60_min_avg, 6_hr_avg, 24_hr_avg, 1_wk_avg)
+                            is_owner, aqi, current_pm_2_5, 10_min_avg, 30_min_avg, 60_min_avg, 6_hr_avg, 24_hr_avg, 1_wk_avg)
             VALUES(
                 UNIX_TIMESTAMP(NOW()),
                 %(AGE)s,
@@ -113,6 +115,7 @@ def insert_reading(reading):
                 %(THINGSPEAK_SECONDARY_ID)s,
                 %(THINGSPEAK_SECONDARY_ID_READ_KEY)s,
                 %(isOwner)s,
+                %(aqi)s,
                 %(v)s,
                 %(v1)s,
                 %(v2)s,
@@ -133,6 +136,9 @@ def insert_reading(reading):
         r['v4'] = stats['v4']
         r['v5'] = stats['v5']
         r['v6'] = stats['v6']
+        r['aqi']= aqi.to_iaqi(aqi.POLLUTANT_PM25, stats['v'], algo=aqi.ALGO_EPA)
+
+        print(r['Label'], r['aqi'])
 
         # print(json.dumps(r, sort_keys=True, indent=4, separators=(',', ': ')))
 
@@ -150,11 +156,14 @@ def insert_reading(reading):
 def handler():
 
     monitors = get_monitors()
-
+    print("Refreshing monitor data")
     for m in monitors:
 
         # print("Getting readings from monitor ", m[0])
         reading = get_reading(m[0])
+
+        # last_seen = datetime.fromtimestamp(reading['LastSeen'])
+        # print(last_seen)
+
         insert_reading(reading)
 
-handler()
