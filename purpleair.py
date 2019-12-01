@@ -20,16 +20,17 @@ cur = conn.cursor()
 
 def get_reading(monitor):
 
-    base_url = "http://purpleair.com/json?show="
-
-    # print("Getting sensor reading from monitor ", monitor)
+    base_url = "http://www.purpleair.com/json?show="
     r = requests.get(base_url + str(monitor))
-
-    # print(r)
     # print(json.dumps(r.json(), sort_keys=True, indent=4, separators=(',', ': ')))
 
-    reading = r.json()
-    return reading['results']
+    try:
+        reading = r.json()
+        return reading['results']
+    except Exception as e:
+        print(e)
+        print("Failed to get reading from ", monitor)
+        return None
 
 
 def get_monitors():
@@ -127,43 +128,45 @@ def insert_reading(reading):
         """
 
     for r in reading:
-        
-        stats = json.loads(r['Stats'])
-        r['v']  = stats['v']
-        r['v1'] = stats['v1']
-        r['v2'] = stats['v2']
-        r['v3'] = stats['v3']
-        r['v4'] = stats['v4']
-        r['v5'] = stats['v5']
-        r['v6'] = stats['v6']
-        r['aqi']= aqi.to_iaqi(aqi.POLLUTANT_PM25, stats['v'], algo=aqi.ALGO_EPA)
-
-        print(r['Label'], r['aqi'])
-
-        # print(json.dumps(r, sort_keys=True, indent=4, separators=(',', ': ')))
-
-        sql = channel2 if "ParentID" in r else channel1
 
         try:
-            cur.execute(sql, r)
-            conn.commit()
-          #  print("Reading inserted")
-        except Exception as e:
-            print("Unable to insert reading")
-            print(e)
+            stats = json.loads(r['Stats'])
+            r['v']  = stats['v']
+            r['v1'] = stats['v1']
+            r['v2'] = stats['v2']
+            r['v3'] = stats['v3']
+            r['v4'] = stats['v4']
+            r['v5'] = stats['v5']
+            r['v6'] = stats['v6']
+            r['aqi']= aqi.to_iaqi(aqi.POLLUTANT_PM25, stats['v'], algo=aqi.ALGO_EPA)
 
+            print(r['Label'], r['aqi'])
+
+            # print(json.dumps(r, sort_keys=True, indent=4, separators=(',', ': ')))
+
+            sql = channel2 if "ParentID" in r else channel1
+
+            try:
+                cur.execute(sql, r)
+                conn.commit()
+              #  print("Reading inserted")
+            except Exception as e:
+                print("Unable to insert reading")
+                print(e)
+        except Exception as e:
+            print("Failed to insert readings")
+            print(r)
+            print(e)
 
 def handler():
 
     monitors = get_monitors()
     print("Refreshing monitor data")
+
     for m in monitors:
 
-        # print("Getting readings from monitor ", m[0])
         reading = get_reading(m[0])
 
-        # last_seen = datetime.fromtimestamp(reading['LastSeen'])
-        # print(last_seen)
-
-        insert_reading(reading)
+        if reading:
+            insert_reading(reading)
 

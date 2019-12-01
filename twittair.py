@@ -85,7 +85,15 @@ def get_reading(field:str, monitor_id:int):
     response = cur.fetchone()
 
     try:
-        myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, (response[1] + response[2])/2, algo=aqi.ALGO_EPA)
+        # If one channel or the other is malfunctioning and reading zero, take the AQI value of the good channel
+        if response[1] == 0:
+            myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, response[2], algo=aqi.ALGO_EPA)
+        if response[2] == 0:
+            myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, response[1], algo=aqi.ALGO_EPA)
+
+        # If they both have values, average them
+        if response[1] > 0 and response[2] > 0:
+            myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, (response[1] + response[2])/2, algo=aqi.ALGO_EPA)
 
         data = Reading(
             id=         monitor_id,
@@ -116,7 +124,7 @@ def get_readings(field:str, monitors:list)->list:
         if reading:
 
             # If Channel A and Channel B are more than 30% different, don't include, the monitor may be malfunctioning
-            if reading.pct_diff > .3 and reading.A > 20:
+            if reading.pct_diff > .3 and reading.A > 20 and reading.B > 0:
                 print("This monitor may be malfuctioning")
                 print(reading)
                 continue
@@ -397,7 +405,8 @@ def main():
     try:
         field = sys.argv[2]
     except:
-        field = "current_pm_2_5"
+        field = "10_min_avg"
+
 
     img = screenshot()  # Obtain screenshot
     purpleair.handler() # Refresh Sensor Data
@@ -407,7 +416,7 @@ def main():
 
     if mode == "update":
 
-        if field != 'current_pm_2_5':
+        if field not in ['current_pm_2_5', '10_min_avg']:
             img = home_directory + 'air_levels.jpg'
 
         intro = "CURRENT PM2.5 AQI (" + field + "): "

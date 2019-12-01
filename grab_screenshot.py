@@ -6,6 +6,7 @@ import time
 
 def screenshot():
 
+    print("Getting screenshot")
     date = datetime.now().strftime("%Y-%m-%d %H%M")
     print(date)
 
