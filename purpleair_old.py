@@ -33,7 +33,7 @@ def get_reading(monitor):
         return None
 
 
-def get_monitors():
+def get_monitors()->list:
 
     sql = """
         SELECT
@@ -41,7 +41,7 @@ def get_monitors():
         FROM
             air_monitors
         WHERE
-            channel = "A"
+            channel='A'
     """
 
     cur.execute(sql)

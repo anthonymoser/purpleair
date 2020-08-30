@@ -1,5 +1,4 @@
 from config import db_config
-import json
 import pymysql
 import sys
 import aqi
@@ -19,20 +18,19 @@ def get_reading(monitor):
 
     sql = """
         SELECT
-            (aq1.PM2_5Value + aq2.PM2_5Value) / 2 as channel_avg,
-            aq1.label,
-            from_unixtime(aq1.recorded_at),
-            aq1.record_id
+            aq1.entry_id,
+            ROUND((aq1.`PM2.5` + aq2.`PM2.5`) / 2, 2) as channel_avg
         FROM
-            air_quality aq1
+            purpleair_primary aq1
         JOIN
-            air_quality aq2
+            purpleair_primary aq2
         ON
-            aq1.record_id + 1 = aq2.record_id
+            aq1.entry_id = aq2.entry_id
+            AND aq1.monitor_id + 1 = aq2.monitor_id
         WHERE
-            aq1.ID = %s
+            aq1.monitor_id = %s
             AND aq1.AQI IS NULL
-            AND aq1.recorded_at - aq1.lastseen < 1000; 
+        LIMIT 1000
         """
 
     cur.execute(sql, monitor)
@@ -42,27 +40,32 @@ def get_reading(monitor):
     print("Processing ", len(response), " readings")
     sql2 = """
         UPDATE
-            air_quality aq
+            purpleair_primary pp
         SET
             AQI = %(aqi)s
         WHERE
-            aq.record_id = %(record_id)s 
-            OR aq.record_id = %(record_id)s + 1
+            pp.entry_id = %(entry_id)s 
+            AND monitor_id IN (%(monitor_id)s, %(monitor_id)s + 1)
     """
-    updates = []
 
     for r in response:
 
-        myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, r[0], algo=aqi.ALGO_EPA)
-        update = {
-            "aqi": myaqi,
-            "record_id": r[3]
-        }
-        print(update)
-        updates.append(update)
-        cur.execute(sql2, update)
-        conn.commit()
+        try:
+            myaqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, r[1], algo=aqi.ALGO_EPA)
+            update = {
+                "aqi": myaqi,
+                "entry_id": r[0],
+                "monitor_id": monitor
+            }
+            print(update)
+            # updates.append(update)
+            cur.execute(sql2, update)
+            conn.commit()
+        except Exception as e:
+            print("Error with row", r)
+            print(e)
 
+    return len(response)
     # print("Updating values")
     # cur.executemany(sql2, updates)
     # conn.commit()
@@ -90,7 +93,9 @@ def handler():
 
     for m in monitors:
         print("Processing monitor: ", m)
-        get_reading(m[0])
+        r = 1000
+        while r == 1000:
+            r = get_reading(m[0])
 
 
 handler()

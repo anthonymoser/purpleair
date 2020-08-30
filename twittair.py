@@ -5,19 +5,19 @@ from collections import namedtuple
 import tweepy
 import aqi
 from grab_screenshot import screenshot
-import purpleair
+from purpleair_old import get_monitors, handler
 
-
+# Initialize Database Connection
 try:
-    # print ("SQL CONNECTION")
     conn = pymysql.connect(host=db_config[0], user=db_config[1], passwd=db_config[2], db=db_config[3],
                            connect_timeout=10)
 except Exception as e:
     print("Unable to connect to db")
     sys.exit()
 
-
 cur = conn.cursor()
+
+# Create namedtuples
 Reading = namedtuple('Reading', 'id label field A B avg time pct_diff aqi aqi_level')
 AQI_level = namedtuple('AQI_level', 'lower upper color description')
 
@@ -35,17 +35,14 @@ except:
     print("Error during authentication")
 
 
-def get_aqi_level(myaqi)->namedtuple:
+def get_aqi_level(myaqi:int)->namedtuple:
 
     aqi_levels = [
-        AQI_level(lower=0, upper=51, color='Green', description='Air quality is considered satisfactory, and air pollution poses little or no risk.'),
-        AQI_level(lower=51, upper=101, color='Yellow',
-                  description='Air quality is acceptable; however, if they are exposed for 24 hours there may be a moderate health concern for a very small number of people who are unusually sensitive to air pollution.'),
-        AQI_level(lower=101, upper=151, color='Orange',
-                  description='Members of sensitive groups may experience health effects if they are exposed for 24 hours. The general public is not likely to be affected with 24 hours of exposure.'),
-        AQI_level(lower=151, upper=201, color='Red',
-                  description='Everyone may begin to experience health effects if they are exposed for 24 hours; members of sensitive groups may experience more serious health effects with 24 hours of exposure.'),
-        AQI_level(lower=201, upper=300, color='Purple', description='Everyone may begin to experience health effects if they are exposed for 24 hours.')
+        AQI_level(lower=0,   upper=51,   color='Green',  description='Air quality is considered satisfactory, and air pollution poses little or no risk.'),
+        AQI_level(lower=51,  upper=101,  color='Yellow', description='Air quality is acceptable; however, if they are exposed for 24 hours there may be a moderate health concern for a very small number of people who are unusually sensitive to air pollution.'),
+        AQI_level(lower=101, upper=151,  color='Orange', description='Members of sensitive groups may experience health effects if they are exposed for 24 hours. The general public is not likely to be affected with 24 hours of exposure.'),
+        AQI_level(lower=151, upper=201,  color='Red',    description='Everyone may begin to experience health effects if they are exposed for 24 hours; members of sensitive groups may experience more serious health effects with 24 hours of exposure.'),
+        AQI_level(lower=201, upper=300,  color='Purple', description='Everyone may begin to experience health effects if they are exposed for 24 hours.')
     ]
 
     for level in aqi_levels:
@@ -55,11 +52,11 @@ def get_aqi_level(myaqi)->namedtuple:
 
 def get_reading(field:str, monitor_id:int):
 
-    sql = """
+    sql = f"""
         SELECT
             ch_a.label,
-            ch_a.""" + field + """,
-            ch_b.""" + field + """,
+            ch_a.{field},
+            ch_b.{field},
             FROM_UNIXTIME(ch_a.recorded_at)
         FROM
             air_quality ch_a
@@ -69,19 +66,14 @@ def get_reading(field:str, monitor_id:int):
             ch_a.recorded_at = ch_b.recorded_at
             AND ch_b.id = ch_a.id + 1
         WHERE
-            ch_a.id = %(monitor_id)s
+            ch_a.id = {monitor_id}
             AND ch_a.LastSeen > UNIX_TIMESTAMP(NOW() - INTERVAL 20 MINUTE)
         ORDER BY
             ch_a.recorded_at DESC
         LIMIT 1
     """
 
-    bind = {
-        "field": field,
-        "monitor_id": monitor_id
-    }
-
-    cur.execute(sql, bind)
+    cur.execute(sql)
     response = cur.fetchone()
 
     try:
@@ -187,63 +179,67 @@ def get_last_tweet():
 
 def set_thread(monitor_id:int, tweet_id:str = None):
 
-    sql = """
+    sql = f"""
         UPDATE
             air_monitors
         SET
-            thread = %s
+            thread = {tweet_id}
         WHERE
-            id = %s
+            id = {monitor_id}
     """
-    cur.execute(sql, (tweet_id, monitor_id))
+    cur.execute(sql)
     conn.commit()
 
 
+# Return the tweet ID of the last tweet in the thread
 def get_thread(monitor_id:int)->str:
 
-    sql = """
+    sql = f"""
         SELECT
             thread
         FROM
             air_monitors
         WHERE
-            id = %s
+            id = {monitor_id}
     """
-    cur.execute(sql, monitor_id)
+    cur.execute(sql)
     conn.commit()
+
     tweet_id = cur.fetchone()
-    print(tweet_id)
     return tweet_id[0]
 
 
 def compose_alert_tweet(reading:namedtuple)->str:
 
     if reading.aqi_level.color == 'Green':
-        msg = reading.label + " has returned to status GREEN."
-        msg += "\n" + "Current AQI: " + str(reading.aqi)
-        msg += "\n\n" + reading.aqi_level.description
+        msg = f"""
+            {reading.label} has returned to status GREEN.
+            Current AQI: {str(reading.aqi)}
+            \n\n{reading.aqi_level.description} """
 
     else:
-        msg = "AIR QUALITY ALERT: \n" + reading.label
-        msg += "\n" + "Status: " + reading.aqi_level.color
-        msg += "\n" + "Current AQI: " + str(reading.aqi)
-        msg += "\n\n" + reading.aqi_level.description
+        msg = f"""
+        AIR QUALITY ALERT:
+        {reading.label}
+        Status: {reading.aqi_level.color}
+        Current AQI: {str(reading.aqi)}
+        \n\n{reading.aqi_level.description} """
 
     return msg
 
 
 def check_monitor_status(reading):
 
-    sql = """
+    sql = f"""
         SELECT
             status
         FROM
             air_monitors
         WHERE
-            id = %s
+            id = {reading.id}
     """
 
-    cur.execute(sql, reading.id)
+    cur.execute(sql)
     conn.commit()
     status = cur.fetchone()
 
@@ -373,7 +369,7 @@ def get_all_measurements(monitor_id):
         reading = get_reading(f, monitor_id)
         if reading:
             # If Channel A and Channel B are more than 30% different, don't include, the monitor may be malfunctioning
-            if reading.pct_diff > .3 and reading.A > 20:
+            if reading.pct_diff > .5 and reading.A > 20:
                 continue
             else:
                 lines.append("\n" + f + ": " + str(reading.aqi))
@@ -384,8 +380,9 @@ def get_all_measurements(monitor_id):
 def monitor_summary(monitor_id):
 
     reading = get_reading('current_pm_2_5', monitor_id)
+
     if reading:
-        msg = "AQI Averages For " + reading.label+ ": "
+        msg = f"AQI Averages For {reading.label}: "
         body = get_all_measurements(monitor_id)
         for b in body:
             msg += b
@@ -398,7 +395,7 @@ def monitor_summary(monitor_id):
 def main():
 
     # Takes two command line arguments:
-    # 'mode': update, alert, current_warnings
+    # 'mode': update, alert, current_warnings, averages
     # 'field': name of the measurement window to use (current_pm_2_5, 10_min_avg, 30_min_avg, 60_min_avg, 6_hr_avg, 24_avg, 1_week_avg)
 
     mode = sys.argv[1]
@@ -408,36 +405,37 @@ def main():
         field = "10_min_avg"
 
 
-    img = screenshot()  # Obtain screenshot
-    purpleair.handler() # Refresh Sensor Data
+    try:
+        img = screenshot()  # Obtain screenshot
+    except:
+        img = home_directory + 'air_levels.jpg'
+
+    handler() # Refresh Sensor Data
 
     monitors = get_monitors()
     readings = get_readings(field, monitors)
 
     if mode == "update":
 
+        # If the reading isn't the 10 minute pm2.5 avg, the PurpleAir screenshot won't match, so use the AQI table
         if field not in ['current_pm_2_5', '10_min_avg']:
             img = home_directory + 'air_levels.jpg'
 
-        intro = "CURRENT PM2.5 AQI (" + field + "): "
+        intro = f"CURRENT PM2.5 AQI ({field}): "
         body = get_regular_update(readings)
         tweets = split_tweets(intro, body)
-        for t in tweets:
-            print(t)
         send_tweets(tweets, img)
 
     if mode == "alert":
         get_alerts(readings)
 
     if mode == "current_warnings":
-        intro = "These warnings are still in effect (" + field + "):"
+        intro = f"These warnings are still in effect ({field}):"
         body = get_current_warnings()
         if body:
             if field != 'current_pm_2_5':
                 img = home_directory + 'air_levels.jpg'
             tweets = split_tweets(intro, body)
-            for t in tweets:
-                print(t)
             send_tweets(tweets, img)
 
     if mode == "averages":
@@ -448,10 +446,6 @@ def main():
             summary = monitor_summary(m)
             if summary:
                 tweets.append(summary)
-
-        for t in tweets:
-            print(t)
-            print("\n")
 
         send_tweets(tweets)
 

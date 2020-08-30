@@ -1,54 +1,73 @@
-CREATE TABLE `air_monitors` (
-  `id` int(11) DEFAULT NULL,
-  `label` varchar(255) DEFAULT NULL,
-  `created_at` varchar(255) DEFAULT NULL,
-  `channel` varchar(1) DEFAULT NULL,
-  `status` varchar(255) DEFAULT NULL,
-  `last_status_change` bigint(20) DEFAULT NULL COMMENT 'unix timestamp (CST)'
+CREATE TABLE `readings` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `sensor_id` int(11) DEFAULT NULL,
+  `context_id` int(11) DEFAULT NULL,
+  `pm1.0` decimal(10,2) DEFAULT NULL,
+  `pm2.5` decimal(10,2) DEFAULT NULL,
+  `pm2.5_10minute` decimal(10,2) DEFAULT NULL,
+  `pm2.5_30minute` decimal(10,2) DEFAULT NULL,
+  `pm2.5_60minute` decimal(10,2) DEFAULT NULL,
+  `pm2.5_6hour` decimal(10,2) DEFAULT NULL,
+  `pm2.5_24hour` decimal(10,2) DEFAULT NULL,
+  `pm2.5_1week` decimal(10,2) DEFAULT NULL,
+  `pm10.0` decimal(10,2) DEFAULT NULL,
+  `0.3_um_count` decimal(10,2) DEFAULT NULL,
+  `0.5_um_count` decimal(10,2) DEFAULT NULL,
+  `1.0_um_count` decimal(10,2) DEFAULT NULL,
+  `2.5_um_count` decimal(10,2) DEFAULT NULL,
+  `5.0_um_count` decimal(10,2) DEFAULT NULL,
+  `10.0_um_count` decimal(10,2) DEFAULT NULL,
+  `humidity` decimal(10,2) DEFAULT NULL,
+  `temperature` decimal(10,2) DEFAULT NULL COMMENT 'Temp inside sensor housing. Typically 8*F higher than ambient conditions',
+  `pressure` decimal(10,2) DEFAULT NULL,
+  `voc` decimal(10,2) DEFAULT NULL,
+  `ozone1` decimal(10,2) DEFAULT NULL,
+  `ten_minute_aqi` decimal(10,2) DEFAULT NULL,
+  `aqi_level` varchar(255) DEFAULT NULL,
+  `time_stamp` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sensor_id` (`sensor_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 
-CREATE TABLE `air_quality` (
-  `record_id` int(11) NOT NULL AUTO_INCREMENT,
-  `recorded_at` bigint(11) DEFAULT NULL COMMENT 'UTC',
-  `AGE` int(11) DEFAULT NULL,
-  `A_H` varchar(45) DEFAULT NULL,
-  `DEVICE_BRIGHTNESS` varchar(45) DEFAULT NULL,
-  `DEVICE_FIRMWAREVERSION` varchar(45) DEFAULT NULL,
-  `DEVICE_HARDWAREDISCOVERED` varchar(255) DEFAULT NULL,
-  `DEVICE_LOCATIONTYPE` varchar(255) DEFAULT NULL,
-  `Flag` varchar(45) DEFAULT NULL,
-  `Hidden` varchar(45) DEFAULT NULL,
-  `ID` int(11) DEFAULT NULL,
-  `Label` varchar(255) DEFAULT NULL,
-  `LastSeen` int(11) DEFAULT NULL,
-  `LastUpdateCheck` int(11) DEFAULT NULL,
-  `Lat` decimal(8,6) DEFAULT NULL,
-  `Lon` decimal(8,6) DEFAULT NULL,
-  `PM2_5Value` decimal(4,2) DEFAULT NULL,
-  `ParentID` int(11) DEFAULT NULL,
-  `RSSI` int(11) DEFAULT NULL,
-  `State` varchar(45) DEFAULT NULL,
-  `Stats` varchar(255) DEFAULT NULL,
-  `THINGSPEAK_PRIMARY_ID` varchar(45) DEFAULT NULL,
-  `THINGSPEAK_PRIMARY_ID_READ_KEY` varchar(255) DEFAULT NULL,
-  `THINGSPEAK_SECONDARY_ID` varchar(45) DEFAULT NULL,
-  `THINGSPEAK_SECONDARY_ID_READ_KEY` varchar(255) DEFAULT NULL,
-  `Type` varchar(45) DEFAULT NULL,
-  `Uptime` int(11) DEFAULT NULL,
-  `Version` varchar(45) DEFAULT NULL,
-  `humidity` int(11) DEFAULT NULL,
-  `is_owner` int(11) DEFAULT NULL,
-  `pressure` decimal(10,2) DEFAULT NULL,
-  `temp_f` decimal(10,2) DEFAULT NULL,
-  `AQI` int(11) DEFAULT NULL,
-  `current_pm_2_5` decimal(10,2) DEFAULT NULL COMMENT 'Real time or current PM2.5 value',
-  `10_min_avg` decimal(10,2) DEFAULT NULL COMMENT 'pm2.5 avg (v1)',
-  `30_min_avg` decimal(10,2) DEFAULT NULL COMMENT 'pm2.5 avg',
-  `60_min_avg` decimal(10,2) DEFAULT NULL COMMENT 'pm2.5 avg',
-  `6_hr_avg` decimal(10,2) DEFAULT NULL COMMENT 'pm2.5 avg',
-  `24_hr_avg` decimal(10,2) DEFAULT NULL COMMENT 'pm2.5 avg',
-  `1_wk_avg` decimal(10,2) DEFAULT NULL COMMENT 'pm2.5 avg',
-  PRIMARY KEY (`record_id`),
-  KEY `ID` (`ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=365068 DEFAULT CHARSET=latin1;
+
+CREATE TABLE `contexts` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `sensor_id` int(11) DEFAULT NULL,
+  `name` varchar(255) DEFAULT NULL,
+  `icon` varchar(255) DEFAULT NULL,
+  `location_type` enum('OUTSIDE','INSIDE') DEFAULT NULL,
+  `latitude` decimal(8,6) DEFAULT NULL,
+  `longitude` decimal(8,6) DEFAULT NULL,
+  `altitude` int(11) DEFAULT NULL,
+  `channel_state` enum('No PM','PM-A','PM-B','PM-A+PM-B') DEFAULT NULL,
+  `channel_flags` enum('Normal','A-Downgraded','B-Downgraded','A+B-Downgraded') DEFAULT NULL,
+  `context_created` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sensor_id` (`sensor_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+
+CREATE TABLE `sensors` (
+  `id` int(11) unsigned NOT NULL,
+  `context_id` int(11) DEFAULT NULL,
+  `latest_reading_id` int(11) DEFAULT NULL,
+  `status` varchar(255) DEFAULT NULL,
+  `last_status_change` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+
+
+CREATE TABLE `twitter_sensors` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `sensor_id` int(11) DEFAULT NULL,
+  `twitter_label` varchar(255) DEFAULT NULL,
+  `send_tweets` tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `sensor_id` (`sensor_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+
+
+
