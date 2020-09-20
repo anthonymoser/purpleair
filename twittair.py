@@ -159,22 +159,10 @@ def split_tweets(intro:str, lines:list)->list:
     return tweets
 
 
-def send_tweets(tweets:list, img:str = (home_directory + 'air_levels.jpg'), previous_tweet:str = None):
-
-    for t in tweets:
-
-        if previous_tweet:
-            api.update_with_media(filename=img, status=t, in_reply_to_status_id=previous_tweet)
-        else:
-            api.update_with_media(filename=img, status=t)
-
-        previous_tweet = get_last_tweet()
 
 
-def get_last_tweet():
 
-    last_tweet = api.user_timeline('@swsideair', count=1)
-    return last_tweet[0].id
+
 
 
 def set_thread(monitor_id:int, tweet_id:str = None):

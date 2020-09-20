@@ -1,10 +1,9 @@
 import requests
 from config import sensor_fields, purpleair_api_key
-from collections import namedtuple
 from .db import *
 from .sensor import PurpleAirSensor, Reading
 from decimal import Decimal
-
+import time
 
 
 def get_sensors()->dict:
@@ -14,6 +13,8 @@ def get_sensors()->dict:
             s.id, 
             s.context_id,
             s.status,
+            s.last_seen,
+            s.offline,
             c.name,
             c.location_type,
             c.latitude, 
@@ -37,19 +38,37 @@ def get_sensors()->dict:
     """
 
     cur.execute(sql)
+    conn.commit()
+
     response = cur.fetchall()
     return { r['id']: PurpleAirSensor(r) for r in response }
 
 
 def update_readings(sensors: dict):
+
     data = get_data(sensors)
     readings = parse_data(data)
+
     for r in readings:
-        sensors[r.sensor_id].reading = r
+
+        sensor = sensors[r.sensor_id]
+
+        sensor.reading = r
+        sensor.last_seen = r.last_seen
+        sensor.update_last_seen()
+
+        # If it's been more than 20 minutes since the sensor updated PurpleAir, mark it offline
+        if sensor.last_seen < time.time() - 1200 and sensor.offline is False:
+            sensor.mark_offline_as(True)
+
+        # If it's been less than five minutes since the latest sensor update but the sensor is marked offline, change it online
+        elif sensor.last_seen > time.time() - 300 and sensor.offline is True:
+            sensor.mark_offline_as(False)
 
 
 def get_data(sensors: dict):
-    sensor_ids = sensors.keys()
+    sensor_ids = [str(sensors[s].id) for s in sensors]
+    sensor_ids = ','.join(sensor_ids)
 
     url = 'https://api.purpleair.com/v1/sensors'
     headers = {"x-api-key": purpleair_api_key}
@@ -92,10 +111,22 @@ def parse_data(response: dict) -> list:
     return readings
 
 
-def add_sensor(sensor_id):
-    sensor = PurpleAirSensor(sensor_id)
-    update_readings({sensor_id: sensor})
-    sensor.confirm_context()
+def add_sensors(sensor_list:list):
+
+    for id in sensor_list:
+        try:
+            insert_sensor(id)
+        except Exception as e:
+            print(f'Failed to insert {id}.\n{e}')
+            continue
+
+    sensors = get_sensors()
+    new_sensors = { id: sensors[id] for id in sensors if id in sensor_list}
+    update_readings(new_sensors)
+
+    for id in new_sensors:
+        new_sensors[id].confirm_context()
+        add_to_twitter(id)
 
 
 def insert_sensor(sensor_id):
@@ -103,10 +134,34 @@ def insert_sensor(sensor_id):
     INSERT IGNORE INTO 
         sensors(id)
     VALUES
-        {sensor_id}
+        ({sensor_id})
     """
     cur.execute(sql)
     conn.commit()
 
+
+def add_to_twitter(sensor_id):
+    sql = f"""
+        INSERT IGNORE INTO 
+            twitter_sensors
+        SELECT
+            s.id as sensor_id,
+            c.name as twitter_label,
+            1 as send_tweets,
+            null as thread
+        FROM
+            sensors s
+        JOIN
+            contexts c
+        ON
+            s.context_id = c.id
+        LEFT JOIN
+            twitter_sensors tw
+        ON
+            tw.sensor_id = s.id
+        WHERE
+            s.id = {sensor_id}"""
+    cur.execute(sql)
+    conn.commit()
 
 

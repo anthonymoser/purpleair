@@ -1,6 +1,5 @@
 import aqi
 from .db import cur, conn
-from decimal import *
 
 class PurpleAirSensor:
 
@@ -22,14 +21,21 @@ class PurpleAirSensor:
 
     status = None
     last_seen = None
+    offline = False
 
     def __init__(self, data:dict):
         self.id             = data.get('id')
         self.context_id     = data.get('context_id', None)
         self.context        = { field: data.get(field, None) for field in self.context }
+        self.last_seen      = data.get('last_seen', None)
         self.twitter_label  = data.get('twitter_label', None)
-        self.send_tweets    = data.get('send_tweets', None)
+        self.send_tweets    = bool(data.get('send_tweets', 0))
         self.twitter_thread = data.get('twitter_thread', None)
+        self.offline        = bool(data.get('offline', 0))
+        self.status         = data.get('status')
+
+    def __str__(self):
+        return str(self.__class__) + ": " + str(self.__dict__)
 
     def confirm_context(self):
         if self.context_changed():
@@ -113,6 +119,7 @@ class PurpleAirSensor:
         values = {
             "sensor_id":        self.id,
             "context_id":       self.context_id,
+            "confidence":       self.reading.confidence,
             "pm1.0":            self.reading.pm['1.0'],
             "pm2.5":            self.reading.pm['2.5'],
             "pm2.5_10minute":   self.reading.pm['2.5_10minute'],
@@ -143,6 +150,7 @@ class PurpleAirSensor:
                 readings(
                     `sensor_id`,
                     `context_id`,
+                    `confidence`, 
                     `pm1.0`,
                     `pm2.5`,
                     `pm2.5_10minute`,
@@ -169,6 +177,7 @@ class PurpleAirSensor:
                 (
                 %(sensor_id)s,
                 %(context_id)s,
+                %(confidence)s,
                 %(pm1.0)s,
                 %(pm2.5)s,
                 %(pm2.5_10minute)s,
@@ -211,6 +220,45 @@ class PurpleAirSensor:
             """
             cur.execute(sql)
             conn.commit()
+
+    def update_thread(self, tweet_id:str or None):
+
+        sql = """
+            UPDATE
+                twitter_sensors
+            SET
+                thread = %(thread)s
+            WHERE
+                sensor_id = %(sensor_id)s    
+        """
+        cur.execute(sql, {"thread": tweet_id, "sensor_id": self.id} )
+        conn.commit()
+
+    def mark_offline_as(self, value = False):
+
+        sql = f"""
+            UPDATE
+                sensors
+            SET
+                offline = {value}
+            WHERE
+                id = {self.id}
+        """
+        cur.execute(sql)
+        conn.commit()
+        self.offline = value
+
+    def update_last_seen(self):
+        sql = f"""
+            UPDATE
+                sensors
+            SET
+                last_seen = {self.last_seen}
+            WHERE
+                id = {self.id}
+        """
+        cur.execute(sql)
+        conn.commit()
 
 
 class Reading:
@@ -265,17 +313,16 @@ class Reading:
         self.pressure       = data.get('pressure', None)
         self.voc            = data.get('voc', None)
         self.ozone1         = data.get('ozone1', None)
-
         self.context        = { field: data[field] for field in self.context }
         self.pm             = { field: data[f'pm{field}'] for field in self.pm }
         self.um_count       = { field: data[f'{field}_um_count'] for field in self.um_count }
-
         self.ten_minute_aqi = aqi.to_iaqi(aqi.POLLUTANT_PM25, self.pm['2.5_10minute'], algo=aqi.ALGO_EPA)
         self.aqi_level      = get_aqi_level(self.ten_minute_aqi)
         self.time_stamp     = data.get('time_stamp', None)
 
     def __str__(self):
         return str(self.__class__) + ": " + str(self.__dict__)
+
 
 
 class AQILevel:
@@ -301,7 +348,7 @@ level_data = [
         "lower": 51,
         "upper": 101,
         "color": "Yellow",
-        "description": "Air quality is acceptable; however, if they are exposed for 24 hours there may be a moderate health concern for a very small number of people who are unusually sensitive to air pollution."
+        "description": "Air quality is acceptable; if exposed for 24hrs there may be a moderate health concern for people who are unusually sensitive to air pollution."
     },
     {
         "lower": 101,
